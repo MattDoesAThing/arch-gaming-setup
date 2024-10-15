@@ -5,6 +5,13 @@ YELLOW='\033[1;33m'    # ${YELLOW}
 GREEN='\033[1;32m'    # ${GREEN}
 NC='\033[0m'         # ${NC}
 
+if [ "$(id -u)" -eq 0 ]; then
+    echo -e "${RED}Error: Do not run this script as root or with sudo.${NC}"
+    echo -e "${YELLOW}This script is designed to be run as a regular user with sudo privileges.${NC}"
+    echo -e "${YELLOW}It will prompt for sudo rights when necessary during the setup process.${NC}"
+    echo -e "${GREEN}Please run the script as a regular user: ./arch-gaming-setup.sh${NC}"
+    exit 1
+fi
 
 # Function to check and enable multilib repository
 enable_multilib() {
@@ -43,7 +50,7 @@ install_kde() {
     sudo systemctl enable sddm
 
     sudo pacman -S --noconfirm plasma-desktop dolphin konsole systemsettings plasma-pa plasma-nm kscreen kde-gtk-config breeze-gtk powerdevil sddm-kcm kwalletmanager \
-        kio-admin bluedevil
+        kio-admin bluedevil ark
 
     sudo systemctl enable NetworkManager
 }
@@ -110,7 +117,7 @@ main_installation() {
     lib32-vulkan-icd-loader obs-studio discord mangohud lib32-mangohud goverlay gamescope solaar bluez bluez-utils lib32-libpulse pipewire pipewire-pulse pipewire-alsa linux-headers xwaylandvideobridge
 
     sudo systemctl enable bluetooth.service
-    
+
     echo "Installing AUR packages with yay..."
     yay -S --noconfirm \
         vkbasalt lib32-vkbasalt proton-ge-custom-bin xone-dkms-git dxvk-bin vkd3d-proton-bin
@@ -118,18 +125,28 @@ main_installation() {
     echo "Main installation completed."
 }
 
-# Function to install Pamac and Flathub
+# Function to install Pamac and add flathub
 pamac_installation() {
-    echo "Installing pamac"
+    echo "Installing Pamac..."
 
     # Install Pamac
     sudo pacman -S --noconfirm glib2-devel glib2
     yay -S --noconfirm libpamac-full pamac-all
 
-    # Add Flathub
+    # Add Flathub repository
     sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
     echo "Pamac installation completed."
+}
+
+# Function to install Octopi
+octopi_installation() {
+    echo "Installing Octopi..."
+
+    # Install Octopi
+    MAKEFLAGS="-j$(nproc)" yay -S --noconfirm octopi octopi-notifier
+
+    echo "Octopi installation completed."
 }
 
 # Function to prompt for Desktop Environment selection
@@ -168,10 +185,36 @@ prompt_de_selection() {
     esac
 }
 
+prompt_package_manager() {
+    echo -e "${YELLOW}Which graphical package manager would you like to install?${NC}"
+    echo -e "1) Octopi"
+    echo -e "2) Pamac"
+    echo -e "3) None"
+    read -r pm_choice
+
+    case $pm_choice in
+        1)
+            octopi_installation
+            ;;
+        2)
+            pamac_installation
+            ;;
+        3)
+            echo -e "${RED}No package manager will be installed.${NC}"
+            ;;
+        *)
+            echo -e "${RED}Invalid choice. Please select a valid option.${NC}"
+            prompt_package_manager
+            ;;
+    esac
+}
+
 # Main program
-echo -e "${YELLOW}This script will configure your system for gaming and install software.${NC}"
-echo -e "${YELLOW}Please make sure you have a backup of your important data.${NC}"
-echo -e  "${YELLOW}Do you want to proceed? (y/n)${NC}"
+echo -e "${YELLOW}This script will configure your system for gaming and install the necessary software.${NC}"
+echo -e "${YELLOW}It will automatically download and use yay to install the required software. The multilib repository will also be enabled automatically.${NC}"
+echo -e "${YELLOW}For any additional programs and configurations, you will be prompted for confirmation.${NC}"
+echo -e "${YELLOW}Please ensure that you have a backup of your important data before proceeding.${NC}"
+echo -e "${YELLOW}Do you want to proceed? (y/n)${NC}"
 read -r response
 if [[ ! "$response" =~ ^[Yy]$ ]]; then
     echo -e "${RED}Installation aborted.${NC}"
@@ -183,6 +226,7 @@ sudo -v
 
 # Keep sudo rights
 while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
+
 
 enable_multilib
 sudo pacman -Syyu --noconfirm
@@ -218,14 +262,8 @@ else
     echo -e "${RED}Main installation skipped.${NC}"
 fi
 
-# Ask about Pamac installation
-echo -e "${YELLOW}Do you want to install Pamac? (y/n)${NC}"
-read -r pamac_response
-if [[ "$pamac_response" =~ ^[Yy]$ ]]; then
-    pamac_installation
-else
-    echo -e "${RED}Pamac installation skipped.${NC}"
-fi
+# Ask for Package Manager
+prompt_package_manager
 
 # Ask about Kernel installation
 while true; do
